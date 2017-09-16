@@ -142,18 +142,29 @@ class CaptioningRNN(object):
         word_out, word_cache = word_embedding_forward(captions_in, W_embed)
         if self.cell_type == "rnn":
             h, rnn_cache = rnn_forward(word_out, h0, Wx, Wh, b)
-            score, score_cache = temporal_affine_forward(h, W_vocab, b_vocab)
-            loss, dL = temporal_softmax_loss(score, captions_out, mask)
-            dx, dw, db = temporal_affine_backward(dL, score_cache)
-            grads["W_vocab"] = dw
-            grads["b_vocab"] = db
+        elif self.cell_type == "lstm":
+            h, lstm_cache = lstm_forward(word_out, h0, Wx, Wh, b)
+        else :
+            print (self.cell_type, " not found")
+            return
+        score, score_cache = temporal_affine_forward(h, W_vocab, b_vocab)
+        loss, dL = temporal_softmax_loss(score, captions_out, mask)
+        dx, dw, db = temporal_affine_backward(dL, score_cache)
+        grads["W_vocab"] = dw
+        grads["b_vocab"] = db
+        if self.cell_type == "rnn":
             dx, dh0, dWx, dWh, db = rnn_backward(dx, rnn_cache)
-            grads["Wx"] = dWx
-            grads["Wh"] = dWh
-            grads["b"] = db
-            grads["W_embed"] = word_embedding_backward(dx, word_cache)
-            grads["W_proj"] = features.T.dot(dh0)
-            grads["b_proj"] = dh0.sum(axis = 0)
+        elif self.cell_type == "lstm":
+            dx, dh0, dWx, dWh, db = lstm_backward(dx, lstm_cache)
+        else :
+            print (self.cell_type, " not found")
+            return
+        grads["Wx"] = dWx
+        grads["Wh"] = dWh
+        grads["b"] = db
+        grads["W_embed"] = word_embedding_backward(dx, word_cache)
+        grads["W_proj"] = features.T.dot(dh0)
+        grads["b_proj"] = dh0.sum(axis = 0)
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -216,14 +227,27 @@ class CaptioningRNN(object):
         # a loop.                                                                 #
         ###########################################################################
         pass
-        x = self._start
+        x = np.array([self._start])
         prev_h = features.dot(W_proj) + b_proj
-        for i in range(max_length):
-            word_out = word_embedding_forward(x, W_embed)[0]
-            next_h = rnn_step_forward(word_out, prev_h, Wx, Wh, b)[0]
-            prev_h = next_h
-            x = np.argmax(next_h.dot(W_vocab) + b_vocab, axis = 1)
-            captions[:, i] = x
+        prev_c = 0
+        if self.cell_type == "rnn":
+            for i in range(max_length):
+                word_out = word_embedding_forward(x, W_embed)[0]
+                next_h = rnn_step_forward(word_out, prev_h, Wx, Wh, b)[0]
+                prev_h = next_h
+                x = np.argmax(next_h.dot(W_vocab) + b_vocab, axis = 1)
+                captions[:, i] = x
+        elif self.cell_type == "lstm" :
+            for i in range(max_length):
+                word_out = word_embedding_forward(x, W_embed)[0]
+                next_h, next_c = lstm_step_forward(word_out, prev_h, prev_c, Wx, Wh, b)[:2]
+                prev_h = next_h
+                prev_c = next_c
+                x = np.argmax(next_h.dot(W_vocab) + b_vocab, axis = 1)
+                captions[:, i] = x
+        else :
+            print (self.cell_type, " not find")
+            return
 
         ############################################################################
         #                             END OF YOUR CODE                             #
